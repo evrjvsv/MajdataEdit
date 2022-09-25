@@ -21,6 +21,7 @@ using Un4seen.Bass.Misc;
 using System.Drawing;
 using System.Media;
 using System.ComponentModel;
+using System.Text.RegularExpressions;
 
 namespace MajdataEdit
 {
@@ -373,6 +374,123 @@ namespace MajdataEdit
             else
                 FindGrid.Visibility = Visibility.Collapsed;
         }
+
+        private void MoveToNextModify_CanExecute(object sender, CanExecuteRoutedEventArgs e)
+        {
+
+            string[] block_keyword = { @"[,/\)\}\]]([^,/]*)[,/]" , @"[,/\)\}\]](.*?)$" ,
+                                    @"(\s*),\s*E\s*$", @"[\}\)\>\]](\s*),?",
+                                };
+            // 不支持tap双押简写
+            // 规则：
+            //  1.修改slide应当整条修改
+            //  2.hold改为slide后可以直接tab修改时值
+            //  3.尽量少的空白符（空格）
+            string[] keyword = {
+                                @"\(([\d,\s]*)\)", @"\{([\d,\s]*)\}", @"\<HS\*(\d*\.\d*)\>",         // (bpm) , {beat}, <HS*>
+                                @"[\[\#\:](.*?)[\:\#\]]",                                           // [: , [# , #: , :]
+                                @"(\s*[BDE]?[1-8]\s*)", @"(\s*C\s*)", @"(\s*[bfx\s]+)",            // 匹配tap,touch,修饰词
+                                @"([1-8]\s*[zsw].*?)[\[\*]",                                      // 匹配头尾唯一对应slide
+                                @"([h\-\<\>\^pqvV].*?)[\[\*]",                                   // 匹配其他slide和hold
+                                @"\*(.*?)[\[\*]"                                                // 匹配同头双slide 
+                                };
+            // 找到最近的“块”
+            var next_block = new TextRange(FumenContent.Document.ContentEnd, FumenContent.Document.ContentEnd);
+            foreach (var k in block_keyword)
+            {
+                var range = MatchFromPosition(FumenContent.CaretPosition, k);
+
+                // 选出最近的
+                if (range != null && next_block.Start.CompareTo(range.Start) >= 0)
+                {
+                    // Start相同 优先选小范围
+                    if (next_block.Start.CompareTo(range.Start) == 0 && next_block.End.CompareTo(range.End) <= 0)
+                        continue;
+                    next_block = range;
+                }
+            }
+            var nearest_range = new TextRange(FumenContent.Document.ContentEnd, FumenContent.Document.ContentEnd);
+            foreach (var k in keyword)
+            {
+                var range = MatchFromPosition(FumenContent.CaretPosition, k);
+
+                // 选出最近的
+                if (range != null && nearest_range.Start.CompareTo(range.Start) >= 0)
+                {
+                    // Start相同 优先选大范围
+                    if (nearest_range.Start.CompareTo(range.Start) == 0 && nearest_range.End.CompareTo(range.End) >= 0)
+                        continue;
+                    nearest_range = range;
+                }
+            }
+
+            // next block 为空：nearest_range不在next_block内
+            if (next_block != null && next_block.End.CompareTo(nearest_range.Start) < 0)
+            {
+                nearest_range = next_block;
+            }
+
+            FumenContent.Selection.Select(nearest_range.Start, nearest_range.End);
+        }
+
+        // 尝试了多种方法，但对于新输入的空格，尝试获取Text将会被空格截断，
+        // 猜测是RichTextBox对空格输入做了特殊处理，
+        // 因此尝试通过PreviewKeyDown事件实现，成功
+        TextRange MatchFromPosition(TextPointer position, string reg, LogicalDirection direct = LogicalDirection.Forward)
+        {
+            Console.WriteLine("reg: " + reg);
+
+            Regex r = new Regex(reg);
+
+            TextRange textRange = null;
+
+            while (position != null)
+            {
+                if (position.CompareTo(FumenContent.Document.ContentEnd) == 0)
+                {
+                    break;
+                }
+
+                if (position.GetPointerContext(LogicalDirection.Forward) == TextPointerContext.Text)
+                {
+                    String textRun = position.GetTextInRun(LogicalDirection.Forward);
+                    Match m = r.Match(textRun);
+
+                    if (m.Success)
+                    {
+                        position = position.GetPositionAtOffset(m.Groups[1].Index);
+                        TextPointer nextPointer = position.GetPositionAtOffset(m.Groups[1].Length);
+                        textRange = new TextRange(position, nextPointer);
+
+                        position = position.GetPositionAtOffset(m.Groups[1].Length);
+
+                        Console.WriteLine("| textRun:" + textRun +
+                                        "\n| Matched:" + m.ToString() +
+                                        "\n| mIndex:" + m.Index.ToString() +
+                                        "\n| gIndex:" + m.Groups[1].Index.ToString() +
+                                        "\n| gLen:" + m.Groups[1].Length.ToString() +
+                                        "\n| sLen:" + textRange.End.CompareTo(textRange.Start).ToString() +
+                                        "\n| Groups[1]:" + m.Groups[1] +
+                                        "\n| select:" + textRange.Text +
+                                        "\n| res.Start:" + textRange.Start.GetOffsetToPosition(position).ToString() +
+                                        "\n| res.End:" + textRange.End.GetOffsetToPosition(position).ToString()
+                                        );
+
+                        break;
+                    }
+                    else
+                    {
+                        position = position.GetPositionAtOffset(textRun.Length);
+                    }
+                }
+                else
+                {
+                    position = position.GetNextContextPosition(LogicalDirection.Forward);
+                }
+            }
+            return textRange;
+        }
+
 #endregion
 
 #region Left componients
@@ -486,6 +604,55 @@ namespace MajdataEdit
             {
                 SwitchFumenOverwriteMode();
                 e.Handled = true;
+            }
+            // 各类括号的自动补全
+            // Gesture不支持Key类型，且为了拦截按键事件不被发送给RichTextDown，因此单独处理事件
+            switch (e.Key)
+            {
+                case Key.D9:
+                    if (Keyboard.Modifiers == ModifierKeys.Shift)
+                    {
+                        // 由于软拷贝，只能通过不变的ContentStart间接记录CaretPosition的位置
+                        int distance = FumenContent.Document.ContentStart.GetOffsetToPosition(FumenContent.CaretPosition);
+                        FumenContent.CaretPosition.InsertTextInRun("()");
+                        FumenContent.CaretPosition = FumenContent.Document.ContentStart.GetPositionAtOffset(distance + 1);
+                        e.Handled = true;
+                    }
+                    break;
+                case Key.OemOpenBrackets:
+                    if (Keyboard.Modifiers == ModifierKeys.Shift)
+                    {
+                        int distance = FumenContent.Document.ContentStart.GetOffsetToPosition(FumenContent.CaretPosition);
+                        FumenContent.CaretPosition.InsertTextInRun("{}");
+                        FumenContent.CaretPosition = FumenContent.Document.ContentStart.GetPositionAtOffset(distance + 1);
+                    }
+                    else
+                    {
+                        int distance = FumenContent.Document.ContentStart.GetOffsetToPosition(FumenContent.CaretPosition);
+                        FumenContent.CaretPosition.InsertTextInRun("[:]");
+                        FumenContent.CaretPosition = FumenContent.Document.ContentStart.GetPositionAtOffset(distance + 1);
+                    }
+                    e.Handled = true;
+                    break;
+                case Key.OemComma:
+                    if (Keyboard.Modifiers == ModifierKeys.Shift)
+                    {
+                        int distance = FumenContent.Document.ContentStart.GetOffsetToPosition(FumenContent.CaretPosition);
+                        FumenContent.CaretPosition.InsertTextInRun("<HS*>");
+                        FumenContent.CaretPosition = FumenContent.Document.ContentStart.GetPositionAtOffset(distance + 4);
+                        e.Handled = true;
+                    }
+                    break;
+                // 输入一个纯粹的空格(Fuck RichTextBox)
+                case Key.Space:
+                    if (Keyboard.Modifiers == ModifierKeys.None)
+                    {
+                        int distance = FumenContent.Document.ContentStart.GetOffsetToPosition(FumenContent.CaretPosition);
+                        FumenContent.CaretPosition.InsertTextInRun(" ");
+                        FumenContent.CaretPosition = FumenContent.Document.ContentStart.GetPositionAtOffset(distance+1);
+                        e.Handled = true;
+                    }
+                    break;
             }
         }
 #endregion

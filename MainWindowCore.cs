@@ -490,6 +490,7 @@ namespace MajdataEdit
             AddGesture(editorSetting.IncreasePlaybackSpeedKey, "IncreasePlaybackSpeed");
             AddGesture(editorSetting.DecreasePlaybackSpeedKey, "DecreasePlaybackSpeed");
             AddGesture("Ctrl+f", "Find");
+            AddGesture("Tab", "MoveToNextModify");
             FumenContent.FontSize = editorSetting.FontSize;
             
             ViewerCover.Content = editorSetting.backgroundCover.ToString();

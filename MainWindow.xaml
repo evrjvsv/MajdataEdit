@@ -87,6 +87,7 @@
                 <RoutedUICommand x:Key="IncreasePlaybackSpeed" Text="IncreasePlaybackSpeed"/>
                 <RoutedUICommand x:Key="DecreasePlaybackSpeed" Text="DecreasePlaybackSpeed"/>
                 <RoutedUICommand x:Key="Find" Text="Find"/>
+                <RoutedUICommand x:Key="MoveToNextModify" Text="MoveToNextModify" />
             </RichTextBox.Resources>
             <RichTextBox.Background>
                 <SolidColorBrush Color="#FF171717" Opacity="0.3"/>
@@ -100,6 +101,7 @@
                 <CommandBinding Command="{StaticResource IncreasePlaybackSpeed}" CanExecute="IncreasePlaybackSpeed_CanExecute"/>
                 <CommandBinding Command="{StaticResource DecreasePlaybackSpeed}" CanExecute="DecreasePlaybackSpeed_CanExecute"/>
                 <CommandBinding Command="{StaticResource Find}" CanExecute="FindCommand_CanExecute"/>
+                <CommandBinding Command="{StaticResource MoveToNextModify}" CanExecute="MoveToNextModify_CanExecute" />
 
             </RichTextBox.CommandBindings>
             <FlowDocument Language="null"/>
