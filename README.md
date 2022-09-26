@@ -1,4 +1,6 @@
 ***
-请参阅[MajdataView](https://github.com/LingFeng-bbben/MajdataView)
+请参阅
+- 原版[MajdataView](https://github.com/LingFeng-bbben/MajdataView)
+- fork版[MajdataView](https://github.com/evrjvsv/MajdataView)
 ***
-今后的更新和说明也将在那个页面发布。请留意。
+
